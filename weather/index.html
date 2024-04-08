@@ -1,0 +1,141 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta http-equiv="X-UA-Compatible" content="IE=edge">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Washington Weather</title>
+  <style>
+    body {
+      margin: 0;
+      padding: 0;
+      background: #f4f4f4;
+    }
+  
+    h1 {
+      text-align: center;
+      margin-bottom: 20px;
+    }
+  
+    ul,
+    li {
+      margin: 0;
+      padding: 0;
+      list-style: none;
+    }
+  
+    li {
+      position: relative;
+      margin: 20px;
+      max-width: 420px;
+      border: 1px solid rgb(220, 220, 220);
+      box-shadow: 0 0 15px rgb(216, 216, 216);
+    }
+  
+    .img {
+      position: relative;
+      height: 0;
+      width: 100%;
+      padding-top: 65%;
+      overflow: hidden;
+    }
+  
+    .img img {
+      position: absolute;
+      top: -12%;
+      left: 0;
+      width: 100%;
+    }
+    
+    li p {
+      position: absolute;
+      right: 0;
+      bottom: 0;
+      margin: 0;
+      padding: 2px 5px;
+      font-family: sans-serif;
+      color: white;
+      font-size: 12px;
+      background: rgba(0, 0, 0, 0.60);
+    }
+  </style>
+</head>
+
+<body>
+  <ul id="imageList"></ul>
+
+  <script>
+    async function fetchSeattleDateTime() {
+      try {
+        const response = await fetch('https://worldtimeapi.org/api/timezone/America/Los_Angeles');
+        const data = await response.json();
+        return new Date(data.datetime); // Using local time instead of UTC time
+      } catch (error) {
+        console.error('Error fetching Seattle date and time:', error);
+        return new Date(); // Return current date and time if API call fails
+      }
+    }
+
+    async function fetchImages() {
+      const listContainer = document.getElementById('imageList');
+      const currentDateTimeElement = document.getElementById('currentDateTime');
+
+      try {
+        // Get current date and time in Seattle
+        const seattleDateTime = await fetchSeattleDateTime();
+        const currentDateTimeUTC = seattleDateTime.getTime();
+        
+        // Loop through next 3 days
+        for (let dayOffset = 0; dayOffset < 3; dayOffset++) {
+          const currentDate = new Date(currentDateTimeUTC + (dayOffset * 24 * 3600 * 1000));
+          const year = currentDate.getUTCFullYear();
+          const month = String(currentDate.getUTCMonth() + 1).padStart(2, '0');
+          const day = String(currentDate.getUTCDate()).padStart(2, '0');
+
+          // Loop through 8 hours of the day (0, 3, 6, 9, 12, 15, 18, 21)
+          for (let hour = 0; hour < 24; hour += 3) {
+            const hourString = String(hour).padStart(2, '0');
+            const imageUrl = `https://graphical.weather.gov/images/washington/dynamic/Sky_${year}${month}${day}${hourString}_washington.png`;
+
+            // Calculate local time of the image
+            const fileName = `${year}-${month}-${day} ${hourString}:00:00`;
+            const utcDate = new Date(fileName);
+            const localTime = new Date(utcDate.getTime() - (utcDate.getTimezoneOffset() * 60000));
+
+            // Compare local time with today's local date
+            if (localTime >= seattleDateTime) {
+              const liElement = document.createElement('li');
+              const imgDiv = document.createElement('div');
+              imgDiv.classList.add('img');
+              const imgElement = document.createElement('img');
+              imgElement.src = imageUrl;
+              imgElement.alt = `Weather image for ${month}/${day} ${hourString}`;
+
+              const pElement = document.createElement('p');
+              pElement.textContent = `${localTime.toLocaleString('en-US', {
+                  weekday: "short",
+                  day: "numeric",
+                  hour: "numeric",
+                  hourCycle: "h12"
+                })}`;
+
+              imgDiv.appendChild(imgElement);
+              liElement.appendChild(imgDiv);
+              liElement.appendChild(pElement);
+              listContainer.appendChild(liElement);
+            }
+          }
+        }
+      } catch (error) {
+        console.error('Error fetching images:', error);
+        // Display an error message to the user
+        listContainer.textContent = 'Error fetching images. Please try again later.';
+      }
+    }
+
+    window.onload = fetchImages;
+  </script>
+</body>
+</html>
+
+
