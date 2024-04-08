@@ -1,0 +1,98 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+  <meta charset="UTF-8">
+  <meta http-equiv="X-UA-Compatible" content="IE=edge">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Washington Weather</title>
+  <style>
+    body {
+      margin: 0;
+      padding: 0;
+      background: #f4f4f4;
+    }
+
+    ul,
+    li {
+      margin: 0;
+      padding: 0;
+      list-style: none;
+    }
+
+    li {
+      margin: 20px;
+      max-width: 420px;
+      border: 1px solid rgb(220, 220, 220);
+      box-shadow: 0 0 15px rgb(216, 216, 216);
+    }
+
+    .img {
+      position: relative;
+      height: 0;
+      width: 100%;
+      padding-top: 69.6%;
+      overflow: hidden;
+    }
+
+    img {
+      position: absolute;
+      top: -35px;
+      left: 0;
+      width: 100%;
+    }
+  </style>
+</head>
+<body>
+    <ul id="imageList"></ul>
+
+    <script>
+        // Function to fetch images from the URL
+        function fetchImages() {
+            fetch('https://graphical.weather.gov/images/washington/dynamic/')
+                .then(response => response.text())
+                .then(data => {
+                    // Parsing HTML response to extract image URLs
+                    const parser = new DOMParser();
+                    const doc = parser.parseFromString(data, 'text/html');
+                    const links = doc.querySelectorAll('a[href$=".gif"]');
+
+                    // Filter out only the images starting with 'Sky'
+                    const skyImages = Array.from(links)
+                                        .filter(link => link.textContent.startsWith('Sky'))
+                                        .map(link => link.getAttribute('href'));
+
+                    // Display images on the webpage
+                    const listContainer = document.getElementById('imageList');
+                    skyImages.forEach(image => {
+                        const liElement = document.createElement('li');
+                        const imgElement = document.createElement('img');
+                        imgElement.src = 'https://graphical.weather.gov/images/washington/dynamic/' + image;
+                        
+                        // Extracting date and time from the filename
+                        const dateTimeString = image.match(/\d{10}/)[0];
+                        const year = dateTimeString.slice(0, 4);
+                        const month = dateTimeString.slice(4, 6);
+                        const day = dateTimeString.slice(6, 8);
+                        const hour = dateTimeString.slice(8, 10);
+                        
+                        // Convert UTC date and time to local time zone of viewer
+                        const dateTimeUTC = new Date(`${year}-${month}-${day}T${hour}:00:00Z`);
+                        const localDateTime = dateTimeUTC.toLocaleString();
+                        
+                        // Creating and appending the image and date-time information
+                        liElement.innerHTML = `<img src="${imgElement.src}" alt="Weather Image">
+                                                <h2>UTC Date and Time: ${dateTimeUTC.toUTCString()}</h2>
+                                                <h3>Local Date and Time: ${localDateTime}</h3>`;
+                        
+                        listContainer.appendChild(liElement);
+                    });
+                })
+                .catch(error => console.error('Error fetching images:', error));
+        }
+
+        // Call fetchImages function when the page loads
+        window.onload = fetchImages;
+    </script>
+</body>
+</html>
