@@ -1,0 +1,159 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Monster Board Game</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            text-align: center;
+        }
+        .game-container {
+            display: flex;
+            justify-content: center;
+            gap: 20px;
+            margin-top: 20px;
+        }
+        .board {
+            display: grid;
+            grid-template-columns: repeat(5, 60px);
+            grid-template-rows: repeat(5, 60px);
+            gap: 5px;
+        }
+        .cell {
+            width: 60px;
+            height: 60px;
+            border: 1px solid black;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 24px;
+            cursor: pointer;
+        }
+        .game-over {
+            display: none;
+        }
+        .eat-diagram {
+            text-align: left;
+            font-size: 20px;
+        }
+    </style>
+</head>
+<body>
+    <h1>Monster Board Game</h1>
+    <div class="score">Score: <span id="score">0</span></div>
+    <div class="piece-display">Next Piece: <span id="next-piece"></span></div>
+    <div class="game-container">
+        <div class="board" id="board"></div>
+        <div class="eat-diagram">
+            <p>🔴 → 🔵</p>
+            <p>🔵 → 🟢</p>
+            <p>🟢 → 🟡</p>
+            <p>🟡 → 🔴</p>
+        </div>
+    </div>
+    <div class="game-over" id="game-over">
+        <p>Game Over!</p>
+        <button onclick="resetGame()">Start New Game</button>
+    </div>
+
+    <script>
+        const colors = ["🔴", "🔵", "🟢", "🟡"];
+        const directions = ["↑", "↓", "←", "→"];
+        const eatRules = { "🔴": "🔵", "🔵": "🟢", "🟢": "🟡", "🟡": "🔴" };
+        let grid = Array.from({ length: 5 }, () => Array(5).fill(null));
+        let score = 0;
+        let nextPiece = null;
+
+        function createBoard() {
+            const board = document.getElementById("board");
+            board.innerHTML = "";
+            for (let i = 0; i < 5; i++) {
+                for (let j = 0; j < 5; j++) {
+                    let cell = document.createElement("div");
+                    cell.className = "cell";
+                    cell.dataset.row = i;
+                    cell.dataset.col = j;
+                    cell.onclick = () => placePiece(i, j);
+                    board.appendChild(cell);
+                }
+            }
+        }
+
+        function generateNextPiece() {
+            if (isBoardFull()) {
+                endGame();
+                return;
+            }
+            let color = colors[Math.floor(Math.random() * colors.length)];
+            let direction = directions[Math.floor(Math.random() * directions.length)];
+            nextPiece = { color, direction };
+            document.getElementById("next-piece").textContent = color + direction;
+        }
+
+        function isBoardFull() {
+            return grid.every(row => row.every(cell => cell !== null));
+        }
+
+        function placePiece(row, col) {
+            if (!grid[row][col] && nextPiece) {
+                grid[row][col] = { ...nextPiece };
+                nextPiece = null;
+                document.getElementById("next-piece").textContent = "";
+                updateBoard();
+                checkEats(row, col);
+                generateNextPiece();
+            }
+        }
+
+        function checkEats(row, col) {
+            let piece = grid[row][col];
+            if (!piece) return;
+            let directionOffsets = { "↑": [-1, 0], "↓": [1, 0], "←": [0, -1], "→": [0, 1] };
+            let [dr, dc] = directionOffsets[piece.direction];
+            let newRow = row + dr, newCol = col + dc;
+            while (newRow >= 0 && newRow < 5 && newCol >= 0 && newCol < 5 && grid[newRow][newCol]) {
+                if (grid[newRow][newCol].color === eatRules[piece.color]) {
+                    grid[newRow][newCol] = null;
+                    grid[row][col] = null;
+                    grid[newRow][newCol] = { ...piece };
+                    score++;
+                    document.getElementById("score").textContent = score;
+                    row = newRow;
+                    col = newCol;
+                    [newRow, newCol] = [row + dr, col + dc];
+                } else {
+                    break;
+                }
+            }
+            updateBoard();
+        }
+
+        function updateBoard() {
+            for (let i = 0; i < 5; i++) {
+                for (let j = 0; j < 5; j++) {
+                    const cell = document.querySelector(`[data-row='${i}'][data-col='${j}']`);
+                    cell.textContent = grid[i][j] ? grid[i][j].color + grid[i][j].direction : "";
+                }
+            }
+        }
+
+        function endGame() {
+            document.getElementById("game-over").style.display = "block";
+        }
+
+        function resetGame() {
+            score = 0;
+            grid = Array.from({ length: 5 }, () => Array(5).fill(null));
+            document.getElementById("score").textContent = score;
+            document.getElementById("game-over").style.display = "none";
+            createBoard();
+            generateNextPiece();
+        }
+
+        createBoard();
+        generateNextPiece();
+    </script>
+</body>
+</html>
