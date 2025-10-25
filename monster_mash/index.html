@@ -12,8 +12,8 @@
     }
     .board {
       display: grid;
-      grid-template-columns: repeat(5, 60px);
-      grid-template-rows: repeat(5, 60px);
+      grid-template-columns: repeat(4, 60px);
+      grid-template-rows: repeat(4, 60px);
       gap: 5px;
       justify-content: center;
       margin: 20px auto;
@@ -99,6 +99,33 @@
       margin-left: auto;
       margin-right: auto;
     }
+    .multiplier-popup {
+      position: absolute;
+      font-size: 40px;
+      font-weight: bold;
+      color: #ff6b00;
+      text-shadow: 2px 2px 4px rgba(0,0,0,0.5);
+      pointer-events: none;
+      z-index: 20;
+      animation: popup-float 1.5s ease-out forwards;
+    }
+    @keyframes popup-float {
+      0% { transform: scale(0.5) translateY(0); opacity: 0; }
+      20% { transform: scale(1.5) translateY(-10px); opacity: 1; }
+      100% { transform: scale(1) translateY(-80px); opacity: 0; }
+    }
+    .confetti {
+      position: absolute;
+      width: 10px;
+      height: 10px;
+      pointer-events: none;
+      z-index: 15;
+      animation: confetti-fall 2s ease-out forwards;
+    }
+    @keyframes confetti-fall {
+      0% { transform: translateY(0) rotate(0deg); opacity: 1; }
+      100% { transform: translateY(300px) rotate(720deg); opacity: 0; }
+    }
   </style>
 </head>
 <body>
@@ -115,11 +142,14 @@
     <p><span class="size-fish">🐟</span> Fish eats <span class="size-frog">🐸</span> Frog</p>
     <p><span class="size-frog">🐸</span> Frog eats <span class="size-mosquito">🦟</span> Mosquito</p>
     <p><span class="size-mosquito">🦟</span> Mosquito kills <span class="size-human">🧑</span> Human (disease)</p>
-    <p><span style="color: #999;">Pieces stay their type forever - create chain reactions!</span></p>
+    <p><strong>⚡ Multi-Eat!</strong> Pieces eat ALL valid targets in a line!</p>
+    <p><strong>🌪️ Direction Inheritance!</strong> After eating, pieces face the direction of their victim!</p>
+    <p><strong>💯 Chain Multiplier!</strong> 1 eat = 1 pt, 2 eats = 4 pts, 3 eats = 9 pts, 4 eats = 16 pts!</p>
+    <p><span style="color: #999;">Longer chains = exponentially more points!</span></p>
     <p><strong>Actions:</strong> ↻ ↺ (rotate in place), ↑ → ↓ ← (move + rotate)</p>
   </div>
   <script>
-    const boardSize = 5;
+    const boardSize = 4;
     const colors = ["🧑", "🐟", "🐸", "🦟"];
     const directions = ["↑", "→", "↓", "←"];
     const actions = ["↻", "↺", "↑", "→", "↓", "←"];
@@ -219,6 +249,36 @@
       return new Promise(resolve => setTimeout(resolve, ms));
     }
 
+    function showMultiplierPopup(r, c, chainLength, points) {
+      const cellPos = getCellPosition(r, c);
+      const popup = document.createElement('div');
+      popup.className = 'multiplier-popup';
+      popup.textContent = `${chainLength}x = ${points} pts!`;
+      popup.style.left = cellPos.left + 'px';
+      popup.style.top = cellPos.top + 'px';
+      boardElem.appendChild(popup);
+      
+      setTimeout(() => popup.remove(), 1500);
+    }
+
+    function createConfetti(r, c, count) {
+      const colors = ['#ff0000', '#00ff00', '#0000ff', '#ffff00', '#ff00ff', '#00ffff', '#ffa500'];
+      const cellPos = getCellPosition(r, c);
+      
+      for (let i = 0; i < count; i++) {
+        const confetti = document.createElement('div');
+        confetti.className = 'confetti';
+        confetti.style.backgroundColor = colors[Math.floor(Math.random() * colors.length)];
+        confetti.style.left = (cellPos.left + 30 + (Math.random() - 0.5) * 40) + 'px';
+        confetti.style.top = (cellPos.top + 30) + 'px';
+        confetti.style.animationDelay = (Math.random() * 0.3) + 's';
+        confetti.style.transform = `translateX(${(Math.random() - 0.5) * 200}px)`;
+        boardElem.appendChild(confetti);
+        
+        setTimeout(() => confetti.remove(), 2000);
+      }
+    }
+
     async function flashMatch(r, c) {
       const cell = document.querySelector(`.cell[data-row='${r}'][data-col='${c}']`);
       if (cell) {
@@ -244,8 +304,8 @@
 
       updateBoardUI();
       await checkAllEats(placedPos);
-      scoreDisplay.textContent = score;
       nextPiece = generateNextPiece();
+      scoreDisplay.textContent = score;
       updateBoardUI();
       nextPieceDisplay.innerHTML = displayPiece(nextPiece);
 
@@ -256,8 +316,12 @@
     }
 
     async function checkAllEats(startPos) {
+      if (!startPos) return; // No position to check
+      
       let lastAnimatedPos = startPos;
       let keepChecking = true;
+      let totalChainLength = 0;
+      let finalPos = startPos;
 
       while (keepChecking) {
         keepChecking = false;
@@ -265,13 +329,15 @@
         if (lastAnimatedPos) {
           const [r, c] = lastAnimatedPos;
           highlightCell(r, c, 'checking');
-          await sleep(250);
+          await sleep(125);
           
-          const eatResult = await tryEat(r, c);
+          const eatResult = await tryEat(r, c, false); // Don't celebrate yet
           unhighlightCell(r, c, 'checking');
           
           if (eatResult) {
-            lastAnimatedPos = eatResult;
+            totalChainLength += eatResult.chainLength;
+            lastAnimatedPos = eatResult.pos;
+            finalPos = eatResult.pos;
             keepChecking = true;
             continue;
           }
@@ -285,7 +351,7 @@
             const nr = r + dr, nc = c + dc;
             if (inBounds(nr, nc)) {
               highlightCell(nr, nc, 'checking');
-              await sleep(250);
+              await sleep(125);
               unhighlightCell(nr, nc, 'checking');
             }
           }
@@ -293,15 +359,31 @@
           for (let [dr, dc] of clockwiseOffsets) {
             const nr = r + dr, nc = c + dc;
             if (inBounds(nr, nc)) {
-              const eatResult = await tryEat(nr, nc);
+              const eatResult = await tryEat(nr, nc, false); // Don't celebrate yet
               
               if (eatResult) {
-                lastAnimatedPos = eatResult;
+                totalChainLength += eatResult.chainLength;
+                lastAnimatedPos = eatResult.pos;
+                finalPos = eatResult.pos;
                 keepChecking = true;
                 break;
               }
             }
           }
+        }
+      }
+      
+      // Now celebrate the TOTAL chain at the end
+      if (totalChainLength > 0) {
+        const points = totalChainLength * totalChainLength;
+        score += points;
+        
+        if (totalChainLength >= 3) {
+          showMultiplierPopup(finalPos[0], finalPos[1], totalChainLength, points);
+          const confettiCount = Math.min(totalChainLength * 5, 30);
+          createConfetti(finalPos[0], finalPos[1], confettiCount);
+        } else if (totalChainLength === 2) {
+          showMultiplierPopup(finalPos[0], finalPos[1], totalChainLength, points);
         }
       }
     }
@@ -343,29 +425,56 @@
       });
     }
 
-    async function tryEat(r, c) {
+    async function tryEat(r, c, celebrate = true) {
       const piece = board[r][c];
       if (!piece || !piece.color) return null;
       
-      const [dr, dc] = { "↑": [-1, 0], "→": [0, 1], "↓": [1, 0], "←": [0, -1] }[piece.direction];
-      const nr = r + dr, nc = c + dc;
+      // Keep eating as long as we can find valid targets
+      let currentR = r;
+      let currentC = c;
+      let chainLength = 0;
+      let ateAtLeastOnce = false;
       
-      if (inBounds(nr, nc)) {
-        const target = board[nr][nc];
-        if (target && target.color === eatRules[piece.color]) {
-          await Promise.all([flashMatch(r, c), flashMatch(nr, nc)]);
-          
-          await animateEat(r, c, nr, nc, piece);
-          
-          // NO EVOLUTION - piece stays the same type
-          board[nr][nc] = { ...piece };
-          board[r][c] = null;
-          score++;
-          updateBoardUI();
-          
-          return [nr, nc];
-        }
+      while (true) {
+        // Check current direction for a target
+        const [dr, dc] = { "↑": [-1, 0], "→": [0, 1], "↓": [1, 0], "←": [0, -1] }[piece.direction];
+        const targetR = currentR + dr;
+        const targetC = currentC + dc;
+        
+        // Check if there's a valid target
+        if (!inBounds(targetR, targetC)) break;
+        const target = board[targetR][targetC];
+        if (!target || target.color !== eatRules[piece.color]) break;
+        
+        // Found a target! Eat it
+        ateAtLeastOnce = true;
+        chainLength++;
+        
+        await Promise.all([flashMatch(currentR, currentC), flashMatch(targetR, targetC)]);
+        await animateEat(currentR, currentC, targetR, targetC, piece);
+        
+        // Inherit victim's direction IMMEDIATELY
+        piece.direction = target.direction;
+        
+        // Move piece forward
+        board[targetR][targetC] = { ...piece };
+        board[currentR][currentC] = null;
+        updateBoardUI();
+        
+        // Update current position
+        currentR = targetR;
+        currentC = targetC;
+        
+        // Now check the NEW direction for another target (loop continues)
       }
+      
+      if (ateAtLeastOnce) {
+        return {
+          pos: [currentR, currentC],
+          chainLength: chainLength
+        };
+      }
+      
       return null;
     }
 
