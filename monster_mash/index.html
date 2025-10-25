@@ -1,0 +1,452 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Monster Board Game - Prototype 7 (Loop)</title>
+  <style>
+    body {
+      font-family: sans-serif;
+      text-align: center;
+      background: #f5f5f5;
+    }
+    .board {
+      display: grid;
+      grid-template-columns: repeat(5, 60px);
+      grid-template-rows: repeat(5, 60px);
+      gap: 5px;
+      justify-content: center;
+      margin: 20px auto;
+      position: relative;
+    }
+    .cell {
+      width: 60px;
+      height: 60px;
+      border: 1px solid #000;
+      background: white;
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      font-size: 22px;
+      cursor: pointer;
+      position: relative;
+    }
+    .cell .creature {
+      display: inline-block;
+      line-height: 1;
+    }
+    .cell .hover-preview {
+      position: absolute;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      opacity: 0.4;
+      pointer-events: none;
+    }
+    .cell:hover {
+      background-color: #f0f0f0;
+    }
+    .cell.checking {
+      border: 3px solid #ffcc00;
+      box-shadow: 0 0 10px #ffcc00;
+    }
+    .cell.match-found {
+      animation: flash-match 0.5s;
+    }
+    @keyframes flash-match {
+      0%, 100% { border-color: #000; }
+      25%, 75% { border-color: #00ff00; border-width: 3px; box-shadow: 0 0 15px #00ff00; }
+      50% { border-color: #000; }
+    }
+    .animated-piece {
+      position: absolute;
+      width: 60px;
+      height: 60px;
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      font-size: 22px;
+      pointer-events: none;
+      z-index: 10;
+      transition: all 0.3s ease-out;
+    }
+    .animated-piece .creature {
+      display: inline-block;
+      line-height: 1;
+    }
+    .size-human { font-size: 32px; }
+    .size-fish { font-size: 26px; }
+    .size-frog { font-size: 20px; }
+    .size-mosquito { font-size: 14px; }
+    .info {
+      margin: 10px;
+    }
+    #next-piece {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      min-width: 60px;
+      min-height: 30px;
+      vertical-align: middle;
+    }
+    .diagram {
+      margin-top: 20px;
+      max-width: 600px;
+      margin-left: auto;
+      margin-right: auto;
+    }
+  </style>
+</head>
+<body>
+  <h1>Monster Board Game - Prototype 7</h1>
+  <h3>Food Chain Loop</h3>
+  <div class="info">
+    <p>Score: <span id="score">0</span></p>
+    <p>Next Piece: <span id="next-piece">...</span></p>
+  </div>
+  <div class="board" id="board"></div>
+  <div class="diagram">
+    <p><strong>Circular Food Chain - No Evolution!</strong></p>
+    <p><span class="size-human">🧑</span> Human eats <span class="size-fish">🐟</span> Fish</p>
+    <p><span class="size-fish">🐟</span> Fish eats <span class="size-frog">🐸</span> Frog</p>
+    <p><span class="size-frog">🐸</span> Frog eats <span class="size-mosquito">🦟</span> Mosquito</p>
+    <p><span class="size-mosquito">🦟</span> Mosquito kills <span class="size-human">🧑</span> Human (disease)</p>
+    <p><span style="color: #999;">Pieces stay their type forever - create chain reactions!</span></p>
+    <p><strong>Actions:</strong> ↻ ↺ (rotate in place), ↑ → ↓ ← (move + rotate)</p>
+  </div>
+  <script>
+    const boardSize = 5;
+    const colors = ["🧑", "🐟", "🐸", "🦟"];
+    const directions = ["↑", "→", "↓", "←"];
+    const actions = ["↻", "↺", "↑", "→", "↓", "←"];
+    const eatRules = { "🧑": "🐟", "🐟": "🐸", "🐸": "🦟", "🦟": "🧑" };
+
+    let board = Array.from({ length: boardSize }, () => Array(boardSize).fill(null));
+    let score = 0;
+    let nextPiece = null;
+
+    function getSizeClass(emoji) {
+      const sizeMap = {
+        "🧑": "size-human",
+        "🐟": "size-fish",
+        "🐸": "size-frog",
+        "🦟": "size-mosquito"
+      };
+      return sizeMap[emoji] || "";
+    }
+
+    function updateBoardUI() {
+      for (let r = 0; r < boardSize; r++) {
+        for (let c = 0; c < boardSize; c++) {
+          const cell = document.querySelector(`.cell[data-row='${r}'][data-col='${c}']`);
+          const piece = board[r][c];
+          if (!piece) {
+            cell.innerHTML = "";
+          } else if (piece.color) {
+            const sizeClass = getSizeClass(piece.color);
+            cell.innerHTML = `<span class="creature ${sizeClass}">${piece.color}</span>${piece.direction}`;
+          } else if (piece.action) {
+            cell.innerHTML = piece.action;
+          }
+        }
+      }
+    }
+
+    function applyAction(r, c, action) {
+      const piece = board[r][c];
+      if (!piece || !piece.color) return [r, c];
+
+      if (action === "↻") {
+        piece.direction = rotate(piece.direction, 1);
+        return [r, c];
+      } else if (action === "↺") {
+        piece.direction = rotate(piece.direction, -1);
+        return [r, c];
+      } else {
+        // Movement arrows: move piece AND change its direction
+        const move = { "↑": [-1, 0], "→": [0, 1], "↓": [1, 0], "←": [0, -1] }[action];
+        const nr = r + move[0];
+        const nc = c + move[1];
+        if (inBounds(nr, nc)) {
+          const target = board[nr][nc];
+          const canEat = target && target.color === eatRules[piece.color];
+          
+          if (canEat) {
+            // If target can be eaten, just rotate to face it
+            // Let the eating logic handle the actual movement with animation/scoring
+            piece.direction = action;
+            return [r, c];
+          } else if (target === null) {
+            // Only move if space is empty
+            piece.direction = action;
+            board[nr][nc] = piece;
+            board[r][c] = null;
+            return [nr, nc];
+          }
+        }
+        return [r, c];
+      }
+    }
+
+    function rotate(dir, delta) {
+      const idx = directions.indexOf(dir);
+      return directions[(idx + delta + 4) % 4];
+    }
+
+    function inBounds(r, c) {
+      return r >= 0 && r < boardSize && c >= 0 && c < boardSize;
+    }
+
+    function highlightCell(r, c, className) {
+      const cell = document.querySelector(`.cell[data-row='${r}'][data-col='${c}']`);
+      if (cell) {
+        cell.classList.add(className);
+      }
+    }
+
+    function unhighlightCell(r, c, className) {
+      const cell = document.querySelector(`.cell[data-row='${r}'][data-col='${c}']`);
+      if (cell) {
+        cell.classList.remove(className);
+      }
+    }
+
+    function sleep(ms) {
+      return new Promise(resolve => setTimeout(resolve, ms));
+    }
+
+    async function flashMatch(r, c) {
+      const cell = document.querySelector(`.cell[data-row='${r}'][data-col='${c}']`);
+      if (cell) {
+        cell.classList.add('match-found');
+        await sleep(500);
+        cell.classList.remove('match-found');
+      }
+    }
+
+    async function placePiece(r, c) {
+      if (!nextPiece) return;
+      const cell = board[r][c];
+      let placedPos = null;
+      
+      if (nextPiece.color && !cell) {
+        board[r][c] = { ...nextPiece };
+        placedPos = [r, c];
+      } else if (nextPiece.action && cell && cell.color) {
+        placedPos = applyAction(r, c, nextPiece.action);
+      } else {
+        return;
+      }
+
+      updateBoardUI();
+      await checkAllEats(placedPos);
+      scoreDisplay.textContent = score;
+      nextPiece = generateNextPiece();
+      updateBoardUI();
+      nextPieceDisplay.innerHTML = displayPiece(nextPiece);
+
+      if (isBoardFull()) {
+        alert("Game Over! Final Score: " + score);
+        resetGame();
+      }
+    }
+
+    async function checkAllEats(startPos) {
+      let lastAnimatedPos = startPos;
+      let keepChecking = true;
+
+      while (keepChecking) {
+        keepChecking = false;
+        
+        if (lastAnimatedPos) {
+          const [r, c] = lastAnimatedPos;
+          highlightCell(r, c, 'checking');
+          await sleep(250);
+          
+          const eatResult = await tryEat(r, c);
+          unhighlightCell(r, c, 'checking');
+          
+          if (eatResult) {
+            lastAnimatedPos = eatResult;
+            keepChecking = true;
+            continue;
+          }
+        }
+
+        if (lastAnimatedPos) {
+          const [r, c] = lastAnimatedPos;
+          const clockwiseOffsets = [[-1, 0], [0, 1], [1, 0], [0, -1]];
+          
+          for (let [dr, dc] of clockwiseOffsets) {
+            const nr = r + dr, nc = c + dc;
+            if (inBounds(nr, nc)) {
+              highlightCell(nr, nc, 'checking');
+              await sleep(250);
+              unhighlightCell(nr, nc, 'checking');
+            }
+          }
+          
+          for (let [dr, dc] of clockwiseOffsets) {
+            const nr = r + dr, nc = c + dc;
+            if (inBounds(nr, nc)) {
+              const eatResult = await tryEat(nr, nc);
+              
+              if (eatResult) {
+                lastAnimatedPos = eatResult;
+                keepChecking = true;
+                break;
+              }
+            }
+          }
+        }
+      }
+    }
+
+    function getCellPosition(r, c) {
+      const cell = document.querySelector(`.cell[data-row='${r}'][data-col='${c}']`);
+      const boardRect = boardElem.getBoundingClientRect();
+      const cellRect = cell.getBoundingClientRect();
+      return {
+        left: cellRect.left - boardRect.left,
+        top: cellRect.top - boardRect.top
+      };
+    }
+
+    async function animateEat(fromR, fromC, toR, toC, piece) {
+      return new Promise(resolve => {
+        const animPiece = document.createElement('div');
+        animPiece.className = 'animated-piece';
+        const sizeClass = getSizeClass(piece.color);
+        animPiece.innerHTML = `<span class="creature ${sizeClass}">${piece.color}</span>${piece.direction}`;
+        
+        const fromPos = getCellPosition(fromR, fromC);
+        const toPos = getCellPosition(toR, toC);
+        
+        animPiece.style.left = fromPos.left + 'px';
+        animPiece.style.top = fromPos.top + 'px';
+        
+        boardElem.appendChild(animPiece);
+        
+        requestAnimationFrame(() => {
+          animPiece.style.left = toPos.left + 'px';
+          animPiece.style.top = toPos.top + 'px';
+        });
+        
+        setTimeout(() => {
+          animPiece.remove();
+          resolve();
+        }, 300);
+      });
+    }
+
+    async function tryEat(r, c) {
+      const piece = board[r][c];
+      if (!piece || !piece.color) return null;
+      
+      const [dr, dc] = { "↑": [-1, 0], "→": [0, 1], "↓": [1, 0], "←": [0, -1] }[piece.direction];
+      const nr = r + dr, nc = c + dc;
+      
+      if (inBounds(nr, nc)) {
+        const target = board[nr][nc];
+        if (target && target.color === eatRules[piece.color]) {
+          await Promise.all([flashMatch(r, c), flashMatch(nr, nc)]);
+          
+          await animateEat(r, c, nr, nc, piece);
+          
+          // NO EVOLUTION - piece stays the same type
+          board[nr][nc] = { ...piece };
+          board[r][c] = null;
+          score++;
+          updateBoardUI();
+          
+          return [nr, nc];
+        }
+      }
+      return null;
+    }
+
+    function isBoardFull() {
+      return board.every(row => row.every(cell => cell !== null));
+    }
+
+    function generateNextPiece() {
+      const hasCharacter = board.some(row => row.some(cell => cell && cell.color));
+      if (!hasCharacter || Math.random() < 0.90) {
+        return {
+          color: colors[Math.floor(Math.random() * colors.length)],
+          direction: directions[Math.floor(Math.random() * directions.length)]
+        };
+      } else {
+        return {
+          action: actions[Math.floor(Math.random() * actions.length)]
+        };
+      }
+    }
+
+    function displayPiece(piece) {
+      if (piece.color) {
+        const sizeClass = getSizeClass(piece.color);
+        return `<span class="creature ${sizeClass}">${piece.color}</span>${piece.direction}`;
+      } else {
+        return piece.action;
+      }
+    }
+
+    function resetGame() {
+      board = Array.from({ length: boardSize }, () => Array(boardSize).fill(null));
+      score = 0;
+      scoreDisplay.textContent = 0;
+      nextPiece = generateNextPiece();
+      nextPieceDisplay.innerHTML = displayPiece(nextPiece);
+      updateBoardUI();
+    }
+
+    const boardElem = document.getElementById("board");
+    const scoreDisplay = document.getElementById("score");
+    const nextPieceDisplay = document.getElementById("next-piece");
+
+    function showHoverPreview(r, c) {
+      if (!nextPiece) return;
+      
+      const cell = document.querySelector(`.cell[data-row='${r}'][data-col='${c}']`);
+      const piece = board[r][c];
+      
+      const isValid = (nextPiece.color && !piece) || (nextPiece.action && piece && piece.color);
+      if (!isValid) return;
+      
+      const preview = document.createElement('div');
+      preview.className = 'hover-preview';
+      preview.innerHTML = displayPiece(nextPiece);
+      cell.appendChild(preview);
+    }
+
+    function hideHoverPreview(r, c) {
+      const cell = document.querySelector(`.cell[data-row='${r}'][data-col='${c}']`);
+      const preview = cell.querySelector('.hover-preview');
+      if (preview) {
+        preview.remove();
+      }
+    }
+
+    for (let r = 0; r < boardSize; r++) {
+      for (let c = 0; c < boardSize; c++) {
+        const cell = document.createElement("div");
+        cell.className = "cell";
+        cell.dataset.row = r;
+        cell.dataset.col = c;
+        cell.onclick = () => placePiece(r, c);
+        cell.onmouseenter = () => showHoverPreview(r, c);
+        cell.onmouseleave = () => hideHoverPreview(r, c);
+        boardElem.appendChild(cell);
+      }
+    }
+
+    resetGame();
+  </script>
+</body>
+</html>
+
